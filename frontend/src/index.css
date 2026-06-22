@@ -1,0 +1,69 @@
+:root {
+  --serif: 'DM Serif Display', Georgia, serif;
+  --mono: 'Space Mono', ui-monospace, 'Courier New', monospace;
+  --sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+
+  --accent: #c76b62;
+  --bg: #f4e9e1;
+  --bg-glow: #fbf3ec;
+  --card: #fffdf9;
+  --border: #ead9c9;
+  --border-soft: #e4d3c2;
+  --dash: #d8c7b6;
+  --ink: #3a2e25;
+  --ink-muted: #7a6b5d;
+  --ink-faint: #9a8b7d;
+
+  --safe-bg: #dbe9cc;
+  --safe-fg: #3c5c35;
+  --safe-mut: #4f6e47;
+  --caution-bg: #f2dda5;
+  --caution-fg: #875817;
+  --caution-mut: #9c6c28;
+  --danger-bg: #f2c2b3;
+  --danger-fg: #9a3b2f;
+  --danger-mut: #ad4a3d;
+  --neutral-bg: #e1d4c5;
+  --neutral-fg: #6f6052;
+
+  /* higher-contrast ink tone, used for receipt copy that sits on the
+     near-white receipt card rather than the warm page background */
+  --ink-mid: #6b5c4d;
+  --receipt-border: rgba(58, 46, 37, 0.16);
+  --receipt-dash: #c2ab95;
+
+  font: 16px/145% var(--sans);
+  color-scheme: light;
+  color: var(--ink);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image: radial-gradient(circle at 20% 0%, var(--bg-glow) 0%, transparent 45%);
+  min-height: 100svh;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
