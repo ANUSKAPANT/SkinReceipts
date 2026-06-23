@@ -579,6 +579,33 @@
   }
 }
 
+.scan-progress {
+  width: 70%;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--card);
+  overflow: hidden;
+
+  .scan-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.15s ease-out;
+  }
+}
+
+.modal-error {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.modal-sample-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 10px;
+}
+
 @media (max-width: 480px) {
   .actions {
     flex-direction: column;
