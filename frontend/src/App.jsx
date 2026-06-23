@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { createWorker, PSM } from 'tesseract.js'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createWorker } from 'tesseract.js'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
@@ -48,42 +48,47 @@ function cleanOcrText(raw) {
     .join('\n')
 }
 
-// Upscales and boosts contrast before handing the image to Tesseract.
-// Cosmetic labels tend to be small, low-contrast, and printed on a curved
-// surface, which is exactly the case Tesseract handles worst out of the box.
-async function preprocessImage(file) {
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-
-  const img = await new Promise((resolve, reject) => {
-    const el = new Image()
-    el.onload = () => resolve(el)
-    el.onerror = reject
-    el.src = dataUrl
-  })
-
-  const scale = img.width < 1600 ? 1600 / img.width : 1
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(img.width * scale)
-  canvas.height = Math.round(img.height * scale)
-  const ctx = canvas.getContext('2d')
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const { data } = imageData
-  const contrast = 1.6
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114
-    const boosted = Math.min(255, Math.max(0, (gray - 128) * contrast + 128))
-    data[i] = data[i + 1] = data[i + 2] = boosted
+// Tesseract's word-level output is nested block > paragraph > line > word.
+function flattenWords(blocks) {
+  const words = []
+  for (const block of blocks || []) {
+    for (const para of block.paragraphs || []) {
+      for (const line of para.lines || []) {
+        for (const word of line.words || []) words.push(word)
+      }
+    }
   }
-  ctx.putImageData(imageData, 0, 0)
+  return words
+}
 
-  return canvas
+// Finds the pixel region (in the original photo) spanning from the word
+// "ingredients" to the list's closing period, so we can draw a box over it
+// and show the user we actually found the right part of the label.
+function findIngredientBox(words) {
+  const startIdx = words.findIndex((w) => /ingredient/i.test(w.text))
+  if (startIdx === -1) return null
+
+  let endIdx = words.length - 1
+  for (let i = words.length - 1; i >= startIdx; i--) {
+    if (words[i].text.trim().endsWith('.')) {
+      endIdx = i
+      break
+    }
+  }
+
+  return words.slice(startIdx, endIdx + 1).reduce(
+    (box, w) => ({
+      x0: Math.min(box.x0, w.bbox.x0),
+      y0: Math.min(box.y0, w.bbox.y0),
+      x1: Math.max(box.x1, w.bbox.x1),
+      y1: Math.max(box.y1, w.bbox.y1),
+    }),
+    { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
+  )
+}
+
+function countIngredients(text) {
+  return text.split(/[,\n]/).map((s) => s.trim()).filter(Boolean).length
 }
 
 function poreBadge(row) {
@@ -381,37 +386,59 @@ function Divider({ mt, mb }) {
 
 function ScanModal({ onClose, onSample, onExtract }) {
   const fileInputRef = useRef(null)
-  const [phase, setPhase] = useState('idle') // idle | reading | error
+  const [phase, setPhase] = useState('idle') // idle | reading | detected | error
   const [progress, setProgress] = useState(0)
   const [errorMsg, setErrorMsg] = useState(null)
+  const [photoUrl, setPhotoUrl] = useState(null)
+  const [naturalSize, setNaturalSize] = useState(null)
+  const [box, setBox] = useState(null)
+  const [extractedText, setExtractedText] = useState('')
   const reading = phase === 'reading'
+
+  useEffect(() => () => {
+    if (photoUrl) URL.revokeObjectURL(photoUrl)
+  }, [photoUrl])
+
+  function resetToIdle() {
+    setPhase('idle')
+    setErrorMsg(null)
+    setBox(null)
+    setNaturalSize(null)
+    setExtractedText('')
+    setPhotoUrl(null)
+  }
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
 
+    setPhotoUrl(URL.createObjectURL(file))
+    setNaturalSize(null)
+    setBox(null)
     setPhase('reading')
     setProgress(0)
     setErrorMsg(null)
 
     try {
-      const preprocessed = await preprocessImage(file)
       const worker = await createWorker('eng', undefined, {
         logger: (m) => {
           if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100))
         },
       })
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK })
-      const { data } = await worker.recognize(preprocessed)
+      const { data } = await worker.recognize(file, {}, { text: true, blocks: true })
       await worker.terminate()
+
       const text = cleanOcrText(data.text)
       if (!text) {
         setPhase('error')
         setErrorMsg("Couldn't find readable text in that photo — try a clearer, well-lit shot of the ingredients list.")
         return
       }
-      onExtract(text)
+
+      setExtractedText(text)
+      setBox(findIngredientBox(flattenWords(data.blocks)))
+      setPhase('detected')
     } catch {
       setPhase('error')
       setErrorMsg('Something went wrong reading that photo. Try again.')
@@ -428,28 +455,56 @@ function ScanModal({ onClose, onSample, onExtract }) {
           </button>
         </div>
 
-        <div className="scan-box">
-          {reading ? (
-            <>
-              <span className="scan-caption">reading label… {progress}%</span>
-              <div className="scan-progress">
-                <div className="scan-progress-bar" style={{ width: `${progress}%` }} />
+        {photoUrl ? (
+          <div className="scan-photo-wrap">
+            <img
+              src={photoUrl}
+              alt="Scanned label"
+              className="scan-photo"
+              onLoad={(e) => setNaturalSize({ width: e.target.naturalWidth, height: e.target.naturalHeight })}
+            />
+            {phase === 'detected' && box && naturalSize && (
+              <div
+                className="detect-box"
+                style={{
+                  left: `${(box.x0 / naturalSize.width) * 100}%`,
+                  top: `${(box.y0 / naturalSize.height) * 100}%`,
+                  width: `${((box.x1 - box.x0) / naturalSize.width) * 100}%`,
+                  height: `${((box.y1 - box.y0) / naturalSize.height) * 100}%`,
+                }}
+              />
+            )}
+            {reading && (
+              <div className="scan-photo-overlay">
+                <span className="scan-caption">reading label… {progress}%</span>
+                <div className="scan-progress">
+                  <div className="scan-progress-bar" style={{ width: `${progress}%` }} />
+                </div>
               </div>
-            </>
-          ) : (
-            <>
-              <span className="scan-icon large" />
-              <span className="scan-caption">label photo</span>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className="scan-box">
+            <span className="scan-icon large" />
+            <span className="scan-caption">label photo</span>
+          </div>
+        )}
 
         {phase === 'error' && <p className="error modal-error">{errorMsg}</p>}
 
-        <p className="modal-copy">
-          Take or upload a photo of the ingredients list — it's read entirely
-          in your browser; nothing gets uploaded anywhere.
-        </p>
+        {phase === 'detected' && (
+          <p className="detect-meta">
+            {box ? 'Ingredients detected ✓ — ' : ''}
+            {countIngredients(extractedText)} ingredients found
+          </p>
+        )}
+
+        {(phase === 'idle' || phase === 'reading') && (
+          <p className="modal-copy">
+            Take or upload a photo of the ingredients list — it's read
+            entirely in your browser; nothing gets uploaded anywhere.
+          </p>
+        )}
 
         <input
           ref={fileInputRef}
@@ -460,18 +515,37 @@ function ScanModal({ onClose, onSample, onExtract }) {
           onChange={handleFile}
         />
 
-        <button
-          type="button"
-          className="primary modal-cta"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={reading}
-        >
-          {reading ? 'Reading…' : 'Take or upload a photo'}
-        </button>
+        {phase === 'detected' ? (
+          <div className="modal-actions-row">
+            <button type="button" className="primary modal-cta" onClick={() => onExtract(extractedText)}>
+              Use this
+            </button>
+            <button type="button" className="link-btn" onClick={resetToIdle}>
+              Retake
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="primary modal-cta"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={reading}
+            >
+              {reading ? 'Reading…' : 'Take or upload a photo'}
+            </button>
 
-        <button type="button" className="link-btn modal-sample-link" onClick={onSample} disabled={reading}>
-          Or try a sample photo instead
-        </button>
+            {phase === 'error' ? (
+              <button type="button" className="link-btn modal-sample-link" onClick={resetToIdle}>
+                Try again
+              </button>
+            ) : (
+              <button type="button" className="link-btn modal-sample-link" onClick={onSample} disabled={reading}>
+                Or try a sample photo instead
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

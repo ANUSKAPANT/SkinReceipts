@@ -593,6 +593,69 @@
   }
 }
 
+.scan-photo-wrap {
+  position: relative;
+  height: 184px;
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--bg);
+
+  .scan-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+}
+
+.detect-box {
+  position: absolute;
+  border: 2px solid var(--safe-fg);
+  background: rgba(76, 142, 90, 0.18);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.scan-photo-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(48, 33, 22, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  .scan-caption {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--card);
+    text-transform: uppercase;
+  }
+}
+
+.detect-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--safe-fg);
+  text-align: center;
+  margin: 14px 2px 0;
+}
+
+.modal-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+
+  .modal-cta {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 .modal-error {
   margin: 10px 2px 0;
   font-size: 12px;
