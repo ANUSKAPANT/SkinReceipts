@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createWorker } from 'tesseract.js'
-import { GUIDE_BOX, cleanOcrText, countIngredients, loadOrientedCanvas } from '../lib/ocr'
+import { GUIDE_BOX, binarizeForOcr, cleanOcrText, countIngredients, loadOrientedCanvas } from '../lib/ocr'
 
 export default function ScanModal({ onClose, onSample, onExtract }) {
   const fileInputRef = useRef(null)
@@ -187,9 +187,11 @@ export default function ScanModal({ onClose, onSample, onExtract }) {
     crop.width = w
     crop.height = h
     crop.getContext('2d').drawImage(source, x, y, w, h, 0, 0, w, h)
-    setPhotoUrl(crop.toDataURL('image/jpeg', 0.92))
 
-    const data = await runOcr(crop, 6)
+    const processed = binarizeForOcr(crop)
+    setPhotoUrl(processed.toDataURL('image/png'))  // show the B&W version in review
+
+    const data = await runOcr(processed, 6)
     if (!data) return
     const { text, complete } = cleanOcrText(data.text)
     setOcrText(text || '')
