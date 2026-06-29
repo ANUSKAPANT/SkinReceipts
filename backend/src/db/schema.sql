@@ -3,6 +3,9 @@
 -- identified only by a random session_id stored client-side.
 
 create extension if not exists pgcrypto;
+-- pg_trgm powers fuzzy ingredient matching in /api/check, so OCR misreads
+-- ("Dimeticone", "Clyceryl Stearate") still resolve to the right INCI name.
+create extension if not exists pg_trgm;
 
 -- ---------------------------------------------------------------------------
 -- Ingredients & products (Phase 0/1/2)
@@ -22,6 +25,7 @@ create table if not exists ingredients (
 );
 
 create unique index if not exists ingredients_inci_name_idx on ingredients (lower(inci_name));
+create index if not exists ingredients_inci_name_trgm_idx on ingredients using gin (lower(inci_name) gin_trgm_ops);
 
 -- Suffix/keyword heuristics for matching ingredients not found verbatim in
 -- the table above (e.g. an unlisted "... Palmitate" ester still reads as
